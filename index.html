@@ -1,0 +1,700 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document Verification & Word to Excel Converter</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.4.21/mammoth.browser.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; }
+        .glass-card { background: rgba(255, 255, 255, 0.15); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.2); box-shadow: 0 25px 45px rgba(0, 0, 0, 0.1); }
+        .file-input-container { border: 2px dashed rgba(255, 255, 255, 0.3); border-radius: 1rem; padding: 2rem; text-align: center; cursor: pointer; transition: all 0.4s ease; background: rgba(255, 255, 255, 0.05); backdrop-filter: blur(5px); }
+        .file-input-container:hover { background: rgba(255, 255, 255, 0.1); border-color: rgba(255, 255, 255, 0.5); transform: translateY(-2px); box-shadow: 0 15px 35px rgba(0, 0, 0, 0.1); }
+        .file-input-container.dragover { background: rgba(255, 255, 255, 0.2); border-color: #10b981; transform: scale(1.02); }
+        .file-input { display: none; }
+        .btn { transition: all 0.3s ease; font-weight: 600; position: relative; overflow: hidden; padding: 1rem 1.5rem; border-radius: 0.75rem; font-size: 0.875rem; display: flex; align-items: center; justify-content: center; gap: 0.5rem; }
+        .btn::before { content: ''; position: absolute; top: 0; left: -100%; width: 100%; height: 100%; background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent); transition: left 0.5s; }
+        .btn:hover::before { left: 100%; }
+        .btn:hover { transform: translateY(-3px); box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2); }
+        .btn:active { transform: translateY(-1px); }
+        #resultsModal { display: none; backdrop-filter: blur(8px); }
+        .conversion-card { border: 2px solid rgba(255, 255, 255, 0.2); border-radius: 1.5rem; background: rgba(255, 255, 255, 0.1); backdrop-filter: blur(15px); box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1); transition: all 0.4s ease; }
+        .conversion-card:hover { transform: translateY(-5px); box-shadow: 0 30px 60px rgba(0, 0, 0, 0.15); border-color: rgba(255, 255, 255, 0.4); }
+        .conversion-card.ready { border-color: #10b981; background: linear-gradient(135deg, rgba(16, 185, 129, 0.2) 0%, rgba(16, 185, 129, 0.1) 100%); }
+        .conversion-card.converted { border-color: #3b82f6; background: linear-gradient(135deg, rgba(59, 130, 246, 0.2) 0%, rgba(59, 130, 246, 0.1) 100%); }
+        .spinner { border: 4px solid rgba(255, 255, 255, 0.3); border-top: 4px solid #3b82f6; border-radius: 50%; width: 24px; height: 24px; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        @keyframes slideInUp { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: translateY(0); } }
+        .animate-slide-in { animation: slideInUp 0.6s ease-out forwards; }
+        .convert-btn, .download-btn { background: linear-gradient(45deg, #667eea, #764ba2); border: none; color: white; padding: 12px 24px; border-radius: 12px; font-weight: 600; cursor: pointer; transition: all 0.3s ease; display: inline-flex; align-items: center; gap: 8px; font-size: 14px; box-shadow: 0 8px 20px rgba(102, 126, 234, 0.3); }
+        .convert-btn:hover, .download-btn:hover { transform: translateY(-2px); box-shadow: 0 12px 25px rgba(102, 126, 234, 0.4); background: linear-gradient(45deg, #5a67d8, #6b46c1); }
+        .convert-btn:disabled, .download-btn:disabled { background: linear-gradient(45deg, #9ca3af, #6b7280); cursor: not-allowed; transform: none; box-shadow: none; }
+        .download-btn { background: linear-gradient(45deg, #10b981, #059669); box-shadow: 0 8px 20px rgba(16, 185, 129, 0.3); }
+        .download-btn:hover { background: linear-gradient(45deg, #059669, #047857); box-shadow: 0 12px 25px rgba(16, 185, 129, 0.4); }
+        .file-status { font-size: 12px; margin-top: 12px; padding: 6px 12px; border-radius: 20px; font-weight: 500; }
+        .file-status.uploaded { background: rgba(16, 185, 129, 0.2); color: #059669; border: 1px solid rgba(16, 185, 129, 0.3); }
+        .verification-btn { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+        .verification-btn:hover { background: linear-gradient(135deg, #5a67d8 0%, #6b46c1 100%); }
+        .verification-btn.green { background: linear-gradient(135deg, #10b981 0%, #059669 100%); }
+        .verification-btn.red { background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); }
+        .verification-btn.gray { background: linear-gradient(135deg, #6b7280 0%, #4b5563 100%); }
+        .verification-btn.yellow { background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); }
+        .verification-btn.blue { background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); }
+        .floating-shapes { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: -1; }
+        .shape { position: absolute; background: rgba(255, 255, 255, 0.1); border-radius: 50%; animation: float 6s ease-in-out infinite; }
+        .shape:nth-child(1) { width: 80px; height: 80px; top: 20%; left: 10%; animation-delay: 0s; }
+        .shape:nth-child(2) { width: 120px; height: 120px; top: 70%; right: 10%; animation-delay: 2s; }
+        .header-gradient { background: linear-gradient(135deg, rgba(255, 255, 255, 0.2) 0%, rgba(255, 255, 255, 0.1) 100%); backdrop-filter: blur(20px); border: 1px solid rgba(255, 255, 255, 0.2); }
+    </style>
+</head>
+<body class="text-white min-h-screen">
+    <div class="floating-shapes"><div class="shape"></div><div class="shape"></div></div>
+    <div class="container mx-auto p-4 md:p-8">
+        <header class="text-center mb-12 animate-slide-in">
+            <div class="header-gradient rounded-3xl p-8 mb-8">
+                <h1 class="text-4xl md:text-5xl font-bold bg-gradient-to-r from-white to-purple-200 bg-clip-text text-transparent mb-4">Document Verification Hub</h1>
+                <p class="text-xl text-purple-100 max-w-2xl mx-auto leading-relaxed">Transform Word documents to Excel and verify data integrity across multiple files.</p>
+            </div>
+        </header>
+
+        <main class="space-y-12">
+            <div class="animate-slide-in">
+                <div class="text-center mb-8">
+                    <h2 class="text-3xl font-bold text-white mb-4">📄 Word to Excel Converter</h2>
+                </div>
+                <div class="max-w-lg mx-auto">
+                    <div class="conversion-card p-8" id="word-conversion-card">
+                        <div class="file-input-container">
+                            <label for="word-convert-file" class="cursor-pointer w-full h-full flex flex-col items-center justify-center p-6">
+                                <input type="file" id="word-convert-file" class="file-input" accept=".doc,.docx">
+                                <div class="w-16 h-16 bg-gradient-to-r from-purple-400 to-pink-400 rounded-full flex items-center justify-center mb-4"><svg class="w-8 h-8 text-white" fill="currentColor" viewBox="0 0 20 20"><path d="M5.5 13a3.5 3.5 0 01-.369-6.98 4 4 0 117.753-1.977A4.5 4.5 0 1113.5 13H11V9.413l1.293 1.293a1 1 0 001.414-1.414l-3-3a1 1 0 00-1.414 0l-3 3a1 1 0 001.414 1.414L9 9.413V13H5.5z"/></svg></div>
+                                <p class="text-lg font-semibold text-white mb-2">Upload Word Document</p>
+                                <p class="text-purple-200 text-sm">Drag & drop or click to browse</p>
+                                <p id="word-convert-name" class="text-green-300 text-sm mt-2 font-medium"></p>
+                            </label>
+                        </div>
+                        <div class="text-center space-y-4 mt-6">
+                            <div class="flex justify-center space-x-4">
+                                <button id="convert-word-btn" class="convert-btn" disabled>Convert to Excel</button>
+                                <button id="download-excel-btn" class="download-btn" disabled>Download Excel</button>
+                            </div>
+                            <div id="conversion-progress" class="hidden flex justify-center items-center p-4 bg-gradient-to-r from-purple-500 to-pink-500 rounded-xl">
+                                <div class="spinner mr-3"></div><span class="text-white font-medium">Converting...</span>
+                            </div>
+                            <div id="conversion-status" class="file-status hidden">✨ Conversion completed successfully!</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="animate-slide-in">
+                <div class="text-center mb-8">
+                    <h2 class="text-3xl font-bold text-white mb-4">📊 Upload Excel Files for Verification</h2>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+                    <div class="file-input-container glass-card rounded-2xl p-0">
+                        <label class="cursor-pointer w-full h-full flex flex-col items-center justify-center p-8">
+                            <input type="file" id="word-excel-file" class="file-input" disabled>
+                            <p class="text-lg font-semibold text-white mb-2">Word Report File</p>
+                            <p class="text-sm text-purple-200 mb-1">Auto-uploaded from conversion</p>
+                            <p id="word-excel-file-name" class="text-green-300 text-sm font-medium"></p>
+                            <div id="word-excel-status" class="file-status uploaded hidden">✅ Auto-uploaded</div>
+                        </label>
+                    </div>
+                    <div class="file-input-container glass-card rounded-2xl p-0">
+                        <label for="summary-excel-file" class="cursor-pointer w-full h-full flex flex-col items-center justify-center p-8">
+                            <input type="file" id="summary-excel-file" class="file-input" accept=".xlsx,.xlsm">
+                            <p class="text-lg font-semibold text-white mb-2">Summary Excel File</p>
+                            <p class="text-sm text-purple-200 mb-1">Uses "Summary Sheet"</p>
+                            <p id="summary-excel-file-name" class="text-green-300 text-sm font-medium"></p>
+                        </label>
+                    </div>
+                    <div class="file-input-container glass-card rounded-2xl p-0">
+                        <label for="cop-excel-file" class="cursor-pointer w-full h-full flex flex-col items-center justify-center p-8">
+                            <input type="file" id="cop-excel-file" class="file-input" accept=".xlsx,.xlsm">
+                            <p class="text-lg font-semibold text-white mb-2">COP Excel File</p>
+                            <p class="text-sm text-purple-200 mb-1">Uses "Sheet3" or "Table 7"</p>
+                            <p id="cop-excel-file-name" class="text-green-300 text-sm font-medium"></p>
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            <div class="animate-slide-in">
+                <div class="glass-card rounded-3xl p-8">
+                    <div class="text-center mb-8">
+                        <h3 class="text-3xl font-bold text-white mb-4">🔍 Excel Files Verification</h3>
+                    </div>
+                    <div class="space-y-4">
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                            <button id="check-work-order" class="btn verification-btn">Work Order</button>
+                            <button id="check-pre-audit" class="btn verification-btn">Pre-audit</button>
+                            <button id="check-post-audit" class="btn verification-btn">Post-audit</button>
+                            <button id="check-cwi" class="btn verification-btn">CWI</button>
+                        </div>
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <button id="check-excess" class="btn verification-btn red">Check Excess</button>
+                            <button id="check-savings" class="btn verification-btn green">Check Savings</button>
+                            <button id="check-total" class="btn verification-btn gray">Check Total</button>
+                        </div>
+                        <div class="grid grid-cols-1 gap-4 pt-4">
+                            <button id="check-additional-exceeding" class="btn verification-btn yellow">Additional & Exceeding Works</button>
+                             <button id="check-certified-value" class="btn verification-btn blue">Certified Value Check</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <div id="resultsModal" class="fixed inset-0 bg-black bg-opacity-60 overflow-y-auto h-full w-full z-50">
+        <div class="relative top-8 mx-auto p-0 border-0 w-11/12 max-w-7xl">
+            <div class="glass-card rounded-3xl overflow-hidden">
+                <div class="bg-gradient-to-r from-purple-600 to-pink-600 p-6 flex items-center justify-between">
+                    <h3 class="text-2xl font-bold text-white flex items-center gap-3" id="modal-title"></h3>
+                    <button id="closeModal" class="text-white hover:text-purple-200"><svg class="w-8 h-8" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"/></svg></button>
+                </div>
+                <div class="p-4 md:p-8 bg-white text-gray-800"><div id="modal-body" class="text-base"></div></div>
+                <div class="bg-gray-50 px-8 py-4 flex justify-end">
+                    <button id="closeModalBtn" class="px-8 py-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-xl">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- UI ELEMENT SELECTORS ---
+        const fileInputs = { wordExcel: document.getElementById('word-excel-file'), summaryExcel: document.getElementById('summary-excel-file'), copExcel: document.getElementById('cop-excel-file') };
+        const fileNames = { wordExcel: document.getElementById('word-excel-file-name'), summaryExcel: document.getElementById('summary-excel-file-name'), copExcel: document.getElementById('cop-excel-file-name') };
+        const wordConvertFile = document.getElementById('word-convert-file');
+        const wordConvertName = document.getElementById('word-convert-name');
+        const convertBtn = document.getElementById('convert-word-btn');
+        const downloadBtn = document.getElementById('download-excel-btn');
+        const conversionProgress = document.getElementById('conversion-progress');
+        const conversionStatus = document.getElementById('conversion-status');
+        const wordCard = document.getElementById('word-conversion-card');
+        const wordExcelStatus = document.getElementById('word-excel-status');
+        const modal = document.getElementById('resultsModal');
+        const closeModalBtn = document.getElementById('closeModal');
+        const closeModalBtn2 = document.getElementById('closeModalBtn');
+        let convertedWorkbook = null;
+
+        // --- UI EVENT LISTENERS ---
+        wordConvertFile.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                wordConvertName.textContent = file.name;
+                convertBtn.disabled = false;
+                wordCard.classList.add('ready');
+                wordCard.classList.remove('converted');
+                downloadBtn.disabled = true;
+                conversionStatus.classList.add('hidden');
+                fileInputs.wordExcel.value = '';
+                fileNames.wordExcel.textContent = '';
+                wordExcelStatus.classList.add('hidden');
+            }
+        });
+
+        ['summaryExcel', 'copExcel'].forEach(key => {
+            const input = fileInputs[key];
+            const dropArea = input.closest('.file-input-container');
+            input.addEventListener('change', e => { if(e.target.files[0]) fileNames[key].textContent = e.target.files[0].name; });
+            dropArea.addEventListener('dragover', e => { e.preventDefault(); dropArea.classList.add('dragover'); });
+            dropArea.addEventListener('dragleave', () => dropArea.classList.remove('dragover'));
+            dropArea.addEventListener('drop', e => {
+                e.preventDefault(); dropArea.classList.remove('dragover');
+                const file = e.dataTransfer.files[0];
+                if (file && (file.name.endsWith('.xlsx') || file.name.endsWith('.xlsm'))) {
+                    input.files = e.dataTransfer.files;
+                    fileNames[key].textContent = file.name;
+                }
+            });
+        });
+        
+        closeModalBtn.onclick = () => modal.style.display = "none";
+        closeModalBtn2.onclick = () => modal.style.display = "none";
+        window.onclick = (event) => { if (event.target == modal) modal.style.display = "none"; };
+        
+        function showModal(title, content) {
+            document.getElementById('modal-title').innerHTML = `📊 ${title}`;
+            document.getElementById('modal-body').innerHTML = content;
+            modal.style.display = 'block';
+        }
+
+        // --- WORD TO EXCEL CONVERSION ---
+        convertBtn.addEventListener('click', async () => {
+            const file = wordConvertFile.files[0]; if (!file) return;
+            conversionProgress.classList.remove('hidden'); convertBtn.disabled = true;
+            try {
+                const arrayBuffer = await file.arrayBuffer();
+                const [htmlResult, textResult] = await Promise.all([mammoth.convertToHtml({ arrayBuffer }), mammoth.extractRawText({ arrayBuffer })]);
+                const tableData = extractTableFromHtml(htmlResult.value);
+                const textData = extractSummaryText(textResult.value);
+                const wb = XLSX.utils.book_new();
+                if (tableData.length > 0) XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(tableData), 'Table Data');
+                else throw new Error('No table data found in the Word document.');
+                if (textData.length > 0) XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(textData), 'Inspection Summary');
+                convertedWorkbook = wb;
+                autoUploadToVerification(convertedWorkbook, `converted_${file.name.split('.')[0]}.xlsx`);
+                conversionProgress.classList.add('hidden');
+                downloadBtn.disabled = false;
+                conversionStatus.classList.remove('hidden');
+                wordCard.classList.add('converted');
+            } catch (error) {
+                console.error('Word conversion error:', error);
+                conversionProgress.classList.add('hidden');
+                convertBtn.disabled = false;
+                showModal('Conversion Error', `<p class="text-red-500 text-lg font-semibold">${error.message}</p>`);
+            }
+        });
+        downloadBtn.addEventListener('click', () => { if (convertedWorkbook) XLSX.writeFile(convertedWorkbook, `converted_${wordConvertFile.files[0].name.split('.')[0]}.xlsx`); });
+        function extractTableFromHtml(htmlContent) {
+            const tempDiv = document.createElement('div'); tempDiv.innerHTML = htmlContent; let allData = [];
+            tempDiv.querySelectorAll('table').forEach(table => table.querySelectorAll('tr').forEach(row => {
+                const rowData = Array.from(row.querySelectorAll('td, th')).map(cell => cell.innerText.trim());
+                if (rowData.length > 0 && rowData.some(cell => cell)) allData.push(rowData);
+            })); return allData;
+        }
+        function extractSummaryText(rawText) {
+            const startMarker = "Bill Inspection:"; const endMarker = "The total work done";
+            const startIndex = rawText.indexOf(startMarker); if (startIndex === -1) return [];
+            const rawSubstring = rawText.substring(startIndex); const endIndex = rawSubstring.indexOf(endMarker);
+            const summaryBlock = endIndex === -1 ? rawSubstring : rawSubstring.substring(0, endIndex);
+            return summaryBlock.split('\n').filter(line => line.trim().startsWith('·') || line.trim().startsWith('Additional') || line.trim().startsWith('Work of')).map(line => [line.trim()]);
+        }
+        function autoUploadToVerification(workbook, filename) {
+            const wbout = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
+            const blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+            const file = new File([blob], filename, { type: blob.type });
+            const dt = new DataTransfer(); dt.items.add(file);
+            fileInputs.wordExcel.files = dt.files;
+            fileNames.wordExcel.textContent = filename;
+            wordExcelStatus.classList.remove('hidden');
+        }
+
+        // --- VERIFICATION LOGIC & HELPERS ---
+        const COLUMN_MAP = {
+            workOrder:  { report: 'Amount of work order' },
+            preAudit:   { report: 'Amount of Pre audit' },
+            postAudit:  { report: 'Amount of Post Audit' },
+            cwi:        { report: 'Amount of CWI' },
+            excess:     { report: 'Excess' },
+            savings:    { report: 'Saving' },
+            total:      { report: 'Total' }
+        };
+        const PARTICULARS_MAP = { report: 'Particulars' };
+        const POSITIONAL_COLUMN_MAP = {
+            workOrder: 2, preAudit: 3, postAudit: 4, cwi: 5, excess: 6, savings: 7, total: 8
+        };
+        const SUMMARY_OFFSET_MAP = {
+            workOrder: 0, preAudit: 1, postAudit: 2, cwi: 3, excess: 4, savings: 5, total: 6
+        };
+        const PARTICULARS_COLUMN_INDEX = 1;
+
+        function formatValue(value) {
+            if (value === null || value === undefined || String(value).trim() === '-') return "N/A";
+            const num = parseFloat(String(value).replace(/,/g, ''));
+            if (isNaN(num)) return value;
+            return num.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        }
+
+        function parseCurrency(value) {
+            if (value === null || value === undefined) return NaN;
+            // Remove currency symbols, commas, and whitespace then parse
+            return parseFloat(String(value).replace(/₹/g, '').replace(/,/g, '').trim());
+        }
+        
+        function normalizeHeader(str) {
+            if (typeof str !== 'string') return '';
+            return str.replace(/\s+/g, ' ').trim().toLowerCase();
+        }
+
+        async function extractDetailedTable(file, fileType, checkType) {
+            const data = await file.arrayBuffer();
+            const workbook = XLSX.read(data);
+            const sheetNames = {
+                report: ["Table Data"],
+                summary: ["Summary Sheet"],
+                cop: ["Sheet3", "Sheet 3", "Table 7", "Table7"]
+            };
+            const targetSheetName = workbook.SheetNames.find(name => sheetNames[fileType].some(id => name.toLowerCase().includes(id.toLowerCase())));
+            if (!targetSheetName) throw new Error(`Required sheet not found in ${fileType} file.`);
+            const sheet = XLSX.utils.sheet_to_json(workbook.Sheets[targetSheetName], { header: 1, defval: null });
+
+            const tableData = [];
+            let totalValue = NaN;
+            
+            if (fileType === 'cop') {
+                const particularsCol = PARTICULARS_COLUMN_INDEX;
+                const amountCol = POSITIONAL_COLUMN_MAP[checkType];
+                if (amountCol === undefined) return { data: [], total: NaN };
+                for (let i = 7; i < sheet.length; i++) {
+                    const row = sheet[i];
+                    if (!Array.isArray(row) || row.every(cell => cell === null)) continue;
+                    const particular = row[particularsCol];
+                    if (particular === null || particular === undefined) continue;
+                    const amount = row[amountCol];
+                    tableData.push([particular, amount]);
+                    if (typeof particular === 'string' && particular.trim().toLowerCase() === 'total') {
+                        totalValue = parseFloat(String(amount).replace(/,/g, ''));
+                        break;
+                    }
+                }
+            } else if (fileType === 'summary') {
+                let startColumn = -1, startRow = -1;
+                for (let i = 1; i < sheet.length; i++) {
+                    const row = sheet[i];
+                    if (!Array.isArray(row)) continue;
+                    for (let j = 2; j < row.length; j++) {
+                        if (row[j] !== null && row[j] !== '' && !isNaN(parseFloat(String(row[j]).replace(/,/g, '')))) {
+                            startColumn = j; startRow = i; break;
+                        }
+                    }
+                    if (startColumn > -1) break;
+                }
+                if (startColumn === -1) return { data: [], total: NaN };
+                const particularsCol = startColumn - 1;
+                const amountColOffset = SUMMARY_OFFSET_MAP[checkType];
+                if (amountColOffset === undefined) return { data: [], total: NaN };
+                const amountCol = startColumn + amountColOffset;
+                for (let i = startRow; i < sheet.length; i++) {
+                    const row = sheet[i];
+                    if (!Array.isArray(row) || row.every(cell => cell === null)) continue;
+                    const particular = row[particularsCol];
+                    if (particular === null || particular === undefined) continue;
+                    const amount = row.length > amountCol ? row[amountCol] : null;
+                    tableData.push([particular, amount]);
+                    if (typeof particular === 'string' && particular.trim().toLowerCase() === 'total') {
+                        totalValue = parseFloat(String(amount).replace(/,/g, ''));
+                        break;
+                    }
+                }
+            } else { // 'report' file type
+                const particularsHeader = PARTICULARS_MAP[fileType];
+                const amountHeader = COLUMN_MAP[checkType] ? COLUMN_MAP[checkType][fileType] : undefined;
+                let particularsCol = -1, amountCol = -1, startRow = -1;
+                for (let i = 0; i < sheet.length; i++) {
+                    const row = sheet[i];
+                    if (!Array.isArray(row)) continue;
+                    const pIndex = row.findIndex(cell => normalizeHeader(cell) === normalizeHeader(particularsHeader));
+                    const aIndex = amountHeader ? row.findIndex(cell => normalizeHeader(cell) === normalizeHeader(amountHeader)) : -1;
+                    if (pIndex > -1) { particularsCol = pIndex; amountCol = aIndex; startRow = i + 1; break; }
+                }
+                if (startRow === -1) return { data: [], total: NaN };
+                for (let i = startRow; i < sheet.length; i++) {
+                    const row = sheet[i];
+                    if (!Array.isArray(row) || row.every(cell => cell === null)) continue;
+                    const particular = row[particularsCol];
+                    if (particular === null || particular === undefined) continue;
+                    const amount = amountCol > -1 ? row[amountCol] : null;
+                    tableData.push([particular, amount]);
+                    if (typeof particular === 'string' && particular.trim().toLowerCase() === 'total') {
+                        totalValue = parseFloat(String(amount).replace(/,/g, ''));
+                        break;
+                    }
+                }
+            }
+            return { data: tableData, total: totalValue };
+        }
+
+        function renderDetailedResultsModal(title, results, allMatch) {
+            const statusIcon = allMatch ? '<div class="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4"><svg class="w-8 h-8 text-green-500" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"/></svg></div>' : '<div class="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4"><svg class="w-8 h-8 text-red-500" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 001.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"/></svg></div>';
+            let html = `<div class="text-center mb-6">${statusIcon}<h4 class="text-2xl font-bold ${allMatch ? 'text-green-600' : 'text-red-600'} mb-2">${allMatch ? '✅ Totals Match' : '❌ Totals Mismatch'}</h4></div>`;
+            html += '<div class="grid grid-cols-1 lg:grid-cols-3 gap-4">';
+            results.forEach(res => {
+                html += `<div class="border rounded-lg"><h5 class="bg-gray-100 p-3 font-semibold text-center">${res.fileName}</h5><div class="overflow-auto" style="max-height: 400px;"><table class="w-full text-sm">`;
+                if (res.table.data.length === 0) {
+                    html += '<tr><td class="p-4 text-center text-gray-500">Could not find data table.</td></tr>';
+                } else {
+                    res.table.data.forEach(row => {
+                        const isTotal = String(row[0]).trim().toLowerCase() === 'total';
+                        html += `<tr class="${isTotal ? 'bg-gray-200 font-bold' : 'border-b'}"><td class="p-2">${row[0]}</td><td class="p-2 text-right">${formatValue(row[1])}</td></tr>`;
+                    });
+                }
+                html += '</table></div></div>';
+            });
+            html += '</div>';
+            showModal(title, html);
+        }
+
+        async function handleCheck(checkType, displayName) {
+            const { wordExcel, summaryExcel, copExcel } = fileInputs;
+            if (!wordExcel.files[0] || !summaryExcel.files[0] || !copExcel.files[0]) {
+                showModal('Files Missing', '<p class="text-red-600 text-lg font-semibold text-center">Please upload all three Excel files.</p>');
+                return;
+            }
+            showModal(`Processing ${displayName}`, '<div class="flex items-center justify-center p-4"><div class="spinner mr-3"></div>Analyzing files...</div>');
+            try {
+                const [reportResult, summaryResult, copResult] = await Promise.all([
+                    extractDetailedTable(wordExcel.files[0], 'report', checkType),
+                    extractDetailedTable(summaryExcel.files[0], 'summary', checkType),
+                    extractDetailedTable(copExcel.files[0], 'cop', checkType),
+                ]);
+                const totals = [reportResult.total, summaryResult.total, copResult.total].filter(t => !isNaN(t));
+                const allMatch = totals.length > 1 && totals.every(t => Math.abs(t - totals[0]) < 0.01);
+                
+                renderDetailedResultsModal(
+                    `Verification Results: ${displayName}`,
+                    [{ fileName: 'Word Report', table: reportResult }, { fileName: 'Summary Excel', table: summaryResult }, { fileName: 'COP Excel', table: copResult }],
+                    allMatch
+                );
+            } catch (error) {
+                console.error("Verification failed:", error);
+                showModal('Verification Error', `<p class="text-red-700 font-medium text-center">${error.message}</p>`);
+            }
+        }
+        
+        ['work-order', 'pre-audit', 'post-audit', 'cwi', 'excess', 'savings', 'total'].forEach(id => {
+            const checkType = id.replace(/-\w/g, c => c[1].toUpperCase());
+            const displayName = id.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase());
+            document.getElementById(`check-${id}`).addEventListener('click', () => handleCheck(checkType, displayName));
+        });
+        
+        async function handleAdditionalWorksCheck() {
+            const wordExcelFile = fileInputs.wordExcel.files[0];
+            const summaryExcelFile = fileInputs.summaryExcel.files[0];
+            if (!wordExcelFile || !summaryExcelFile) {
+                showModal('Files Missing', '<p class="text-red-600 text-lg font-semibold text-center">Please upload the Word Report and Summary Excel files.</p>');
+                return;
+            }
+            showModal('Processing Additional & Exceeding Works', '<div class="flex items-center justify-center p-4"><div class="spinner mr-3"></div>Analyzing files...</div>');
+
+            try {
+                // Part 1: Extract from Word Report
+                const wordData = await wordExcelFile.arrayBuffer();
+                const wordWorkbook = XLSX.read(wordData);
+                const wordSheetName = "Table Data";
+                if (!wordWorkbook.SheetNames.includes(wordSheetName)) throw new Error(`Sheet "${wordSheetName}" not found in Word Report.`);
+                const wordSheet = XLSX.utils.sheet_to_json(wordWorkbook.Sheets[wordSheetName], { header: 1, defval: null });
+
+                const tableStartInfos = [];
+                for (let i = 22; i < wordSheet.length; i++) {
+                    const row = wordSheet[i];
+                    if (Array.isArray(row)) {
+                        const pIndex = row.findIndex(cell => typeof cell === 'string' && cell.trim() === 'Particulars');
+                        if (pIndex > -1) tableStartInfos.push({ rowIndex: i, colIndex: pIndex });
+                    }
+                }
+                if (tableStartInfos.length === 0) throw new Error("Could not find any 'Particulars' tables after row 22 in Word Report.");
+
+                const additionalWorksData = [];
+                const startInfo = tableStartInfos[0];
+                const endRowIndex = (tableStartInfos.length > 1) ? tableStartInfos[1].rowIndex : wordSheet.length;
+                for (let j = startInfo.rowIndex + 1; j < endRowIndex; j++) {
+                    const rowData = wordSheet[j];
+                    if (Array.isArray(rowData) && rowData[startInfo.colIndex] !== null && rowData[startInfo.colIndex] !== undefined) {
+                        additionalWorksData.push([rowData[startInfo.colIndex], rowData[startInfo.colIndex + 1]]);
+                    }
+                }
+                
+                const totalRowAdditional = additionalWorksData.find(row => String(row[0]).trim().toLowerCase() === 'total');
+                const wordReportAdditionalTotal = totalRowAdditional ? (parseCurrency(totalRowAdditional[1]) || 0) : 0;
+                
+                const exceedingWorksData = [];
+                let wordReportExceedingTotal = 0;
+                if (tableStartInfos.length > 1) {
+                    const startInfoExceeding = tableStartInfos[1];
+                    const endRowIndexExceeding = (tableStartInfos.length > 2) ? tableStartInfos[2].rowIndex : wordSheet.length;
+                    for (let j = startInfoExceeding.rowIndex + 1; j < endRowIndexExceeding; j++) {
+                        const rowData = wordSheet[j];
+                        if (Array.isArray(rowData) && rowData[startInfoExceeding.colIndex] !== null && rowData[startInfoExceeding.colIndex] !== undefined) {
+                            exceedingWorksData.push([rowData[startInfoExceeding.colIndex], rowData[startInfoExceeding.colIndex + 1]]);
+                        }
+                    }
+                    
+                    const totalRowExceeding = exceedingWorksData.find(row => String(row[0]).trim().toLowerCase() === 'total');
+                    if (totalRowExceeding) {
+                         wordReportExceedingTotal = parseCurrency(totalRowExceeding[1]) || 0;
+                    } else if (exceedingWorksData.length > 0) {
+                        const lastRow = exceedingWorksData[exceedingWorksData.length - 1];
+                        const lastRowVal = parseCurrency(lastRow[0]);
+                        if (!isNaN(lastRowVal)) {
+                            wordReportExceedingTotal = lastRowVal;
+                        }
+                    }
+                }
+                
+                // Part 2: Extract from Summary Excel
+                const summaryData = await summaryExcelFile.arrayBuffer();
+                const summaryWorkbook = XLSX.read(summaryData);
+                const boqSheetNames = ["Extracted Data", "BOQ Sheet"];
+                const summarySheetName = summaryWorkbook.SheetNames.find(name => boqSheetNames.some(id => name.toLowerCase().includes(id.toLowerCase())));
+                
+                if (!summarySheetName) throw new Error(`Required sheet ("Extracted Data" or "BOQ Sheet") not found in Summary Excel.`);
+                const summarySheet = XLSX.utils.sheet_to_json(summaryWorkbook.Sheets[summarySheetName], { header: 1, defval: null });
+
+                let headers = {};
+                const headerRow = summarySheet.find(row => Array.isArray(row) && row.some(cell => typeof cell === 'string' && normalizeHeader(cell).includes('particulars')));
+                if (!headerRow) throw new Error('Could not find header row in the summary sheet.');
+                headerRow.forEach((h, i) => headers[normalizeHeader(h)] = i);
+
+                const requiredHeaders = ['particulars', 'as per wo - qty', 'as per post audit (qty)', 'as per cwi (amt)', 'excess'];
+                const missingHeaders = requiredHeaders.filter(h => !(h in headers));
+                if (missingHeaders.length > 0) {
+                    throw new Error(`One or more required columns (${missingHeaders.join(', ')}) are missing in the summary sheet.`);
+                }
+
+                const summaryAdditionalData = [], summaryExceedingData = [];
+                let summaryAdditionalTotal = 0, summaryExceedingTotal = 0;
+                const headerRowIndex = summarySheet.indexOf(headerRow);
+
+                for (let i = headerRowIndex + 1; i < summarySheet.length; i++) {
+                    const row = summarySheet[i];
+                    if (!Array.isArray(row) || row.every(cell => cell === null)) continue;
+                    
+                    const woQty = parseCurrency(row[headers['as per wo - qty']]) || 0;
+                    const postAuditQty = parseCurrency(row[headers['as per post audit (qty)']]) || 0;
+                    const particular = row[headers['particulars']];
+                    
+                    if (woQty === 0 && (postAuditQty > 0)) {
+                        const cwiAmt = row[headers['as per cwi (amt)']];
+                        summaryAdditionalData.push([particular, cwiAmt]);
+                        summaryAdditionalTotal += parseCurrency(cwiAmt) || 0;
+                    } else if (woQty > 0 && postAuditQty > woQty) {
+                        const excessAmt = row[headers['excess']];
+                        summaryExceedingData.push([particular, excessAmt]);
+                        summaryExceedingTotal += parseCurrency(excessAmt) || 0;
+                    }
+                }
+                
+                // Part 3: Render
+                const additionalMatch = Math.abs(wordReportAdditionalTotal - summaryAdditionalTotal) < 0.01;
+                const exceedingMatch = Math.abs(wordReportExceedingTotal - summaryExceedingTotal) < 0.01;
+                
+                const statusIcon = (match) => match ? '<div class="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-2"><svg class="w-6 h-6 text-green-500" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"/></svg></div>' : '<div class="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-2"><svg class="w-6 h-6 text-red-500" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 001.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"/></svg></div>';
+
+                let html = '<div class="space-y-6">';
+                html += `<div class="text-center">${statusIcon(additionalMatch)}<h4 class="text-xl font-bold ${additionalMatch ? 'text-green-600' : 'text-red-600'}">Additional Works: ${additionalMatch ? 'Totals Match' : 'Totals Mismatch'}</h4></div>`;
+                html += '<div class="grid grid-cols-1 lg:grid-cols-2 gap-4">';
+                html += `<div class="border rounded-lg"><h5 class="bg-gray-100 p-3 font-semibold text-center">From Word Report</h5><div class="overflow-auto" style="max-height: 300px;"><table class="w-full text-sm"><thead><tr class="bg-gray-50"><th class="p-2 text-left">Particulars</th><th class="p-2 text-right">Amount</th></tr></thead><tbody>`;
+                additionalWorksData.forEach(row => html += `<tr class="border-b ${String(row[0]).trim().toLowerCase() === 'total' ? 'bg-gray-200 font-bold' : ''}"><td class="p-2">${row[0] || ''}</td><td class="p-2 text-right">${formatValue(row[1])}</td></tr>`);
+                html += '</tbody></table></div></div>';
+                html += `<div class="border rounded-lg"><h5 class="bg-gray-100 p-3 font-semibold text-center">From BOQ Sheet</h5><div class="overflow-auto" style="max-height: 300px;"><table class="w-full text-sm"><thead><tr class="bg-gray-50"><th class="p-2 text-left">Particulars</th><th class="p-2 text-right">As per CWI (Amt)</th></tr></thead><tbody>`;
+                summaryAdditionalData.forEach(row => html += `<tr class="border-b"><td class="p-2">${row[0]}</td><td class="p-2 text-right">${formatValue(row[1])}</td></tr>`);
+                html += `<tr class="bg-gray-200 font-bold"><td class="p-2">Total</td><td class="p-2 text-right">${formatValue(summaryAdditionalTotal)}</td></tr>`;
+                html += '</tbody></table></div></div></div>';
+
+                html += `<div class="mt-8 pt-6 border-t border-gray-200 text-center">${statusIcon(exceedingMatch)}<h4 class="text-xl font-bold ${exceedingMatch ? 'text-green-600' : 'text-red-600'}">Exceeding Works: ${exceedingMatch ? '✅ Totals Match' : '❌ Totals Mismatch'}</h4></div>`;
+                html += '<div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">';
+                html += `<div class="border rounded-lg"><h5 class="bg-gray-100 p-3 font-semibold text-center">From Word Report</h5><div class="overflow-auto" style="max-height: 300px;"><table class="w-full text-sm"><thead><tr class="bg-gray-50"><th class="p-2 text-left">Particulars</th><th class="p-2 text-right">Amount</th></tr></thead><tbody>`;
+                exceedingWorksData.forEach(row => html += `<tr class="border-b ${String(row[0]).trim().toLowerCase() === 'total' ? 'bg-gray-200 font-bold' : ''}"><td class="p-2">${row[0] || ''}</td><td class="p-2 text-right">${formatValue(row[1])}</td></tr>`);
+                html += '</tbody></table></div></div>';
+                html += `<div class="border rounded-lg"><h5 class="bg-gray-100 p-3 font-semibold text-center">From BOQ Sheet</h5><div class="overflow-auto" style="max-height: 300px;"><table class="w-full text-sm"><thead><tr class="bg-gray-50"><th class="p-2 text-left">Particulars</th><th class="p-2 text-right">Excess</th></tr></thead><tbody>`;
+                summaryExceedingData.forEach(row => html += `<tr class="border-b"><td class="p-2">${row[0]}</td><td class="p-2 text-right">${formatValue(row[1])}</td></tr>`);
+                html += `<tr class="bg-gray-200 font-bold"><td class="p-2">Total</td><td class="p-2 text-right">${formatValue(summaryExceedingTotal)}</td></tr>`;
+                html += '</tbody></table></div></div></div></div>';
+                showModal('Additional & Exceeding Works Verification', html);
+
+            } catch (error) { 
+                console.error("Verification Error:", error);
+                showModal('Verification Error', `<p class="text-red-700 font-medium text-center">${error.message}</p>`); 
+            }
+        }
+        document.getElementById('check-additional-exceeding').addEventListener('click', handleAdditionalWorksCheck);
+
+        async function handleCertifiedValueCheck() {
+            const { summaryExcel, copExcel } = fileInputs;
+            if (!summaryExcel.files[0] || !copExcel.files[0]) {
+                showModal('Files Missing', '<p class="text-red-600 text-lg font-semibold text-center">Please upload both Summary Excel and COP Excel files.</p>');
+                return;
+            }
+            showModal('Processing Certified Value', '<div class="flex items-center justify-center p-4"><div class="spinner mr-3"></div>Analyzing files...</div>');
+            
+            try {
+                // 1. Get CWI Total from Summary Excel
+                const summaryResult = await extractDetailedTable(summaryExcel.files[0], 'summary', 'cwi');
+                const summaryCwiTotal = summaryResult.total;
+                if (isNaN(summaryCwiTotal)) {
+                    throw new Error('Could not determine the CWI Total from the Summary Excel file.');
+                }
+
+                // 2. Get Certified Values from COP Excel
+                const copData = await copExcel.files[0].arrayBuffer();
+                const copWorkbook = XLSX.read(copData);
+                const targetSheetNames = ["sheet1", "table1"];
+                const sheetName = copWorkbook.SheetNames.find(name => targetSheetNames.includes(name.toLowerCase().trim().replace(/ /g, '')));
+                
+                if (!sheetName) {
+                    throw new Error('Required sheet (Sheet1 or Table1) not found in COP Excel file.');
+                }
+                const sheet = XLSX.utils.sheet_to_json(copWorkbook.Sheets[sheetName], { header: 1, defval: null });
+
+                let totalARow = -1, totalACol = -1;
+                for (let i = 0; i < sheet.length; i++) {
+                    const row = sheet[i];
+                    if (Array.isArray(row)) {
+                        const colIndex = row.findIndex(cell => typeof cell === 'string' && cell.trim().toLowerCase() === 'total [a]');
+                        if (colIndex > -1) {
+                            totalARow = i;
+                            totalACol = colIndex;
+                            break;
+                        }
+                    }
+                }
+
+                if (totalARow === -1) {
+                    throw new Error('Could not find the "Total [A]" row in the COP Excel file.');
+                }
+
+                const rowData = sheet[totalARow];
+                // CORRECTED LOGIC: Scan all cells to the right of "Total [A]" for numbers
+                const copValues = [];
+                for (let i = totalACol + 1; i < rowData.length; i++) {
+                    const val = parseCurrency(rowData[i]);
+                    if (!isNaN(val)) {
+                        copValues.push(val);
+                    }
+                }
+                
+                let matchingCopValue = null;
+                const isMatch = copValues.some(v => {
+                    if (Math.abs(summaryCwiTotal - v) < 0.01) {
+                        matchingCopValue = v;
+                        return true;
+                    }
+                    return false;
+                });
+
+                // 3. Render
+                const statusIcon = isMatch ? '<div class="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4"><svg class="w-8 h-8 text-green-500" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"/></svg></div>' : '<div class="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4"><svg class="w-8 h-8 text-red-500" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 001.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"/></svg></div>';
+                
+                let html = `<div class="text-center mb-6">${statusIcon}<h4 class="text-2xl font-bold ${isMatch ? 'text-green-600' : 'text-red-600'} mb-2">${isMatch ? '✅ Certified Value Matches' : '❌ Certified Value Mismatch'}</h4></div>`;
+                html += '<div class="grid grid-cols-1 md:grid-cols-2 gap-6">';
+
+                // Summary Card
+                html += `<div class="border-2 ${isMatch ? 'border-green-200' : 'border-red-200'} rounded-xl p-4 text-center bg-gray-50">`;
+                html += '<h5 class="text-lg font-semibold text-gray-700 mb-2">Summary Excel CWI Total</h5>';
+                html += `<p class="text-3xl font-bold text-gray-800">${formatValue(summaryCwiTotal)}</p>`;
+                html += '</div>';
+
+                // COP Card
+                html += `<div class="border rounded-xl p-4 text-center bg-gray-50">`;
+                if (isMatch) {
+                    html += '<h5 class="text-lg font-semibold text-gray-700 mb-2">Matching Certified Value</h5>';
+                    html += `<p class="text-3xl font-bold text-green-600">${formatValue(matchingCopValue)}</p>`;
+                } else {
+                    html += '<h5 class="text-lg font-semibold text-gray-700 mb-2">COP Excel Values Found</h5>';
+                     html += '<div class="flex justify-around items-center mt-3">';
+                    copValues.forEach((val, index) => {
+                         html += `<div class="text-center"><p class="text-xs text-gray-500">Value ${index + 1}</p><p class="text-xl font-semibold text-gray-700"}">${formatValue(val)}</p></div>`;
+                    });
+                    html += '</div>';
+                }
+                html += '</div>';
+
+                html += '</div>';
+                showModal('Certified Value Verification', html);
+
+            } catch (error) {
+                console.error("Certified Value Check failed:", error);
+                showModal('Verification Error', `<p class="text-red-700 font-medium text-center">${error.message}</p>`);
+            }
+        }
+        document.getElementById('check-certified-value').addEventListener('click', handleCertifiedValueCheck);
+
+    </script>
+</body>
+</html>
